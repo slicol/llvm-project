@@ -10,7 +10,7 @@
 // Declares llvm::cl::extrahelp.
 #include "llvm/Support/CommandLine.h"
 #include "clang/AST/Type.h"
-#include <stdarg.h>
+#include "MetaDefines.h"
 
 using namespace clang::tooling;
 using namespace llvm;
@@ -18,55 +18,6 @@ using namespace llvm;
 //////////////////////////////////////////////////////////////////////////
 using namespace clang;
 
-#define mtstr std::string
-#define mtsize std::size_t
-
-bool MTStringStartWith(const mtstr& s, const mtstr& t)
-{
-	return s.substr(0, t.size()).compare(t) == 0;
-}
-
-
-mtstr& MTStringFormat(mtstr& buff, const char* fmt_str, ...)
-{
-	mtsize n = 256;
-
-	if (buff.size() < n)
-	{
-		buff.resize(n);
-	}
-	else
-	{
-		n = buff.size();
-	}
-
-	while (1)
-	{
-		va_list ap;
-		va_start(ap, fmt_str);
-		const int final_n = vsnprintf(&buff[0], n, fmt_str, ap);
-		va_end(ap);
-		if (final_n < 0)
-		{
-			n += static_cast<size_t>(-final_n);
-			buff = "encoding error";
-			break;
-		}
-
-		if (static_cast<size_t>(final_n) >= n)
-		{
-			n += static_cast<size_t>(final_n) - n + 1;
-			buff.resize(n);
-		}
-		else
-		{
-			buff[final_n] = '\0';
-			buff.resize(final_n);
-			break;
-		}
-	}
-	return buff;
-}
 
 static std::vector<mtstr>* MTBuiltinTypeTable;
 static void MTCheckBuiltinTypeTable()
@@ -98,50 +49,65 @@ static void MTCheckBuiltinTypeTable()
 	}
 }
 
-void MTStringReplaceAll(mtstr& str, const mtstr& from, const mtstr& to)
-{
-	if (from.empty())
-		return;
-	mtsize start_pos = 0;
-	while ((start_pos = str.find(from, start_pos)) != mtstr::npos)
-	{
-		str.replace(start_pos, from.length(), to);
-		start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
-	}
-}
 
 
-void MTNormalizeQualifiedName(mtstr& name)
+static void MTNormalizeQualifiedName(mtstr& name)
 {
 	MTStringReplaceAll(name, "::", ".");
 }
 
+static bool MTHasVirtualTable(const clang::Type* Ty)
+{
+	if (!Ty) return false;
+	CXXRecordDecl* Decl = Ty->getAsCXXRecordDecl();
+	if (!Decl) return false;
+
+	for (const CXXMethodDecl* method : Decl->methods())
+	{
+		if (method->isVirtual()) return true;
+	}
+
+	for (CXXBaseSpecifier& base : Decl->bases())
+	{
+		if (MTHasVirtualTable(base.getType().getTypePtr())) return true;
+	}
+
+	return false;
+}
+
+static bool MTCheckFilter(CXXRecordDecl* Decl)
+{
+	bool bResult = true;
+	StringRef name = Decl->getName();
+	bResult = bResult && !name.empty();
+	bResult = bResult && !name.startswith("__vcrt");
+	bResult = bResult && !name.startswith("__crt");
+	bResult = bResult && !name.startswith("_Crt");
+	bResult = bResult && !name.startswith("_");
+
+	std::string qname = Decl->getQualifiedNameAsString();
+	bResult = bResult && !MTStringStartWith(qname, "std::");
+
+	if (bResult)
+	{
+		if (Decl->field_empty())
+		{
+			if (!MTHasVirtualTable(Decl->getTypeForDecl()))
+			{
+				bResult = false;
+			}
+		}
+	}
+
+	return bResult;
+}
 
 class FindNamedClassVisitor : public RecursiveASTVisitor<FindNamedClassVisitor>
 {
 public:
 	explicit FindNamedClassVisitor(ASTContext* Context) : Context(Context) {}
 
-	static bool MTCheckFilter(CXXRecordDecl* Decl)
-	{
-		bool bResult = true;
-		StringRef name = Decl->getName();
-		bResult = bResult && !name.empty();
-		bResult = bResult && !name.startswith("__vcrt");
-		bResult = bResult && !name.startswith("__crt");
-		bResult = bResult && !name.startswith("_Crt");
-		bResult = bResult && !name.startswith("_");
-		
-		std::string qname = Decl->getQualifiedNameAsString();
-		bResult = bResult && !MTStringStartWith(qname,"std::");
-		
-		bResult = bResult && !Decl->field_empty();
-
-		return bResult;
-	}
-
-
-	mtstr MTGetTypeName(const clang::Type* Ty)
+	mtstr MTGetTypeName(const clang::Type* Ty, bool& bHasUnkownType)
 	{
 		MTCheckBuiltinTypeTable();
 
@@ -159,6 +125,7 @@ public:
 			}
 			else
 			{
+				bHasUnkownType = true;
 				return mtstr("(unkown)") + BT->getNameAsCString(Context->getPrintingPolicy());
 			}
 		}
@@ -168,7 +135,7 @@ public:
 			const RecordDecl* RD = RT->getDecl();
 			mtstr name = RD->getQualifiedNameAsString();
 			MTNormalizeQualifiedName(name);
-			return mtstr("%") + name;
+			return mtstr("%union.") + name;
 		}
 		else if (DesugaredType->isStructureOrClassType())
 		{
@@ -185,38 +152,49 @@ public:
 					QualType TAT = Arg.getAsType();
 					if (i == 0)
 					{
-						TmplArgList = MTGetTypeName(TAT.getTypePtr());
+						TmplArgList = MTGetTypeName(TAT.getTypePtr(), bHasUnkownType);
 					}
 					else
 					{
-						TmplArgList = TmplArgList + "," + MTGetTypeName(TAT.getTypePtr());
+						TmplArgList = TmplArgList + "_" + MTGetTypeName(TAT.getTypePtr(),bHasUnkownType);
 					}
 				}
 
 				mtstr name = RD->getQualifiedNameAsString();
 				MTNormalizeQualifiedName(name);
-				return mtstr("%") + name + "<" + TmplArgList + ">";
+
+				return mtstr("%template.") + name + "." + TmplArgList;
+			}
+			else if(DesugaredType->isClassType())
+			{
+				mtstr name = RD->getQualifiedNameAsString();
+				MTNormalizeQualifiedName(name);
+				return mtstr("%class.") + name;
 			}
 			else
 			{
 				mtstr name = RD->getQualifiedNameAsString();
 				MTNormalizeQualifiedName(name);
-				return mtstr("%") + name;
+				return mtstr("%struct.") + name;
 			}
 		}
 		else if (DesugaredType->isEnumeralType())
 		{
 			const EnumType* ET = DesugaredType->getAs<EnumType>();
 			const EnumDecl* ED = ET->getDecl();
-			mtstr name = ED->getQualifiedNameAsString();
-			MTNormalizeQualifiedName(name);
-			return mtstr("%") + name;
+			
+			const clang::Type* Tmp = ED->getIntegerType().getTypePtr();
+			mtstr basename = MTGetTypeName(Tmp, bHasUnkownType);
+
+			//mtstr name = ED->getQualifiedNameAsString();
+			//MTNormalizeQualifiedName(name);
+			return basename;
 		}
 		else if (DesugaredType->isConstantArrayType())
 		{
 			const ConstantArrayType* CAT = dyn_cast<ConstantArrayType>(DesugaredType->getAsArrayTypeUnsafe());
 			
-			mtstr elt = MTGetTypeName(CAT->getElementType().getTypePtr());
+			mtstr elt = MTGetTypeName(CAT->getElementType().getTypePtr(), bHasUnkownType);
 			mtstr n =  CAT->getSize().toString(10, false);
 			return mtstr("[") + n + " x " + elt + "]";
 		}
@@ -239,7 +217,7 @@ public:
 				PTE = PTE->getPointeeType();
 			}
 
-			mtstr Pte = MTGetTypeName(PTE.getTypePtr());
+			mtstr Pte = MTGetTypeName(PTE.getTypePtr(), bHasUnkownType);
 			mtstr name = Pte + PtrTokens;
 			return name;
 		}
@@ -251,13 +229,87 @@ public:
 			{
 				mtstr name = TD->getQualifiedNameAsString();
 				MTNormalizeQualifiedName(name);
+
+				bHasUnkownType = true;
 				return mtstr("(unkown)") + name;
 			}
 		}
 		
-		return "(unkown)";
+		bHasUnkownType = true;
+		return "(unkown)none";
 	}
 
+
+
+	mtstr MTGetTypeLayout(CXXRecordDecl* Declaration, bool& bHasUnkownType)
+	{
+		mtstr Result;
+		mtstr TypeName = Declaration->getQualifiedNameAsString();
+		MTNormalizeQualifiedName(TypeName);
+
+		if (Declaration->isUnion())
+		{
+			Result = mtstr("%union.") + TypeName;
+		}
+		else if(Declaration->isTemplated())
+		{
+			Result = mtstr("%template.") + TypeName;
+		}
+		else if (Declaration->isClass())
+		{
+			Result = mtstr("%class.") + TypeName;
+		}
+		else
+		{
+			Result = mtstr("%struct.") + TypeName;
+		}
+		
+		Result += " = \n{\n";
+
+		bool bThisVirtual = false;
+		for (const CXXMethodDecl* method : Declaration->methods())
+		{
+			if(method->isVirtual()) bThisVirtual = true;
+		}
+
+		bool bBaseVirtual = false;
+		for (CXXBaseSpecifier& base : Declaration->bases())
+		{
+			if(MTHasVirtualTable(base.getType().getTypePtr())) bBaseVirtual = true;
+		}
+
+		if (bThisVirtual && !bBaseVirtual)
+		{
+			mtstr fielditem = "vftable:void**";
+			Result += "    " + fielditem + ",\n";
+		}
+
+		int i = 0;
+		for (CXXBaseSpecifier& base : Declaration->bases())
+		{
+			mtstr basename = MTGetTypeName(base.getType().getTypePtr(), bHasUnkownType);
+			mtstr fielditem = "super." + std::to_string(i) + ":" + basename;
+			i++;
+
+			Result += "    " + fielditem + ",\n";
+		}
+
+		for (const FieldDecl* field : Declaration->fields())
+		{
+			QualType fieldType = field->getType();
+			const clang::Type* DesugaredType = fieldType->getUnqualifiedDesugaredType();
+
+			mtstr fname = field->getNameAsString();
+			mtstr ftype = MTGetTypeName(DesugaredType, bHasUnkownType);
+			mtstr fielditem = fname + ":" + ftype;
+
+			Result += "    " + fielditem + ",\n";
+		}
+
+		Result += "};\n";
+
+		return Result;
+	}
 
 	bool VisitCXXRecordDecl(CXXRecordDecl* Declaration)
 	{
@@ -266,84 +318,25 @@ public:
 			return true;
 		}
 
-		mtstr structName = Declaration->getQualifiedNameAsString();
-		MTNormalizeQualifiedName(structName);
-		llvm::outs() << structName;
-		if (Declaration->getDescribedTemplate())
+		bool bHasUnkownType = false;
+		logs_line('-');
+		mtstr layout = MTGetTypeLayout(Declaration, bHasUnkownType);
+		if (bHasUnkownType)
 		{
-			llvm::outs() << "<getDescribedTemplate>";
+			MTAppendFile(CmdLineOption.WorkDir, "MetaTypeDesc.unkown.mtd", layout);
 		}
-		if (Declaration->getDescribedClassTemplate())
+		else
 		{
-			llvm::outs() << "<getDescribedClassTemplate>";
+			MTAppendFile(CmdLineOption.WorkDir, "MetaTypeDesc.mtd", layout);
 		}
-		if (Declaration->getDescribedTemplateParams())
-		{
-			llvm::outs() << "<getDescribedTemplateParams>";
-		}
-		if (Declaration->getTemplateInstantiationPattern())
-		{
-			llvm::outs() << "<getTemplateInstantiationPattern>";
-		}
-		if (Declaration->isTemplated())
-		{
-			llvm::outs() << "<isTemplated>";
-		}
-		if (Declaration->isTemplateParameter())
-		{
-			llvm::outs() << "<isTemplateParameter>";
-		}
-		llvm::outs() << " = \n{\n";
-
-		for(const FieldDecl* field: Declaration->fields())
-		{
-			if (field->isTemplated())
-			{
-				llvm::outs() << "<isTemplated>";
-			}
-			if (field->isTemplateDecl())
-			{
-				llvm::outs() << "<isTemplateDecl>";
-			}
-
-			QualType fieldType = field->getType();
-			const clang::Type* DesugaredType = fieldType->getUnqualifiedDesugaredType();
-			
-			llvm::outs() << "    " << *field << ":";
-
-			mtstr fieldTypeName = MTGetTypeName(DesugaredType);
-
-			llvm::outs() << fieldTypeName;
-
-			if (DesugaredType->isStructureOrClassType())
-			{
-				const RecordType* RT = DesugaredType->getAs<RecordType>();
-				const RecordDecl* RD = RT->getDecl();
-				
-			
-				if (RD->isTemplateDecl())
-				{
-					llvm::outs() << "<isTemplateDecl>";
-				}
-			}
-
-			//fieldType->getUnqualifiedDesugaredType()->dump(llvm::outs(), *Context);
-			
-			llvm::outs() << ",\n";
-		}
-		llvm::outs() << "};\n";
-		llvm::outs() << "--------------------------------------\n";
-
-		if (Declaration->getQualifiedNameAsString() == "n::m::C")
-		{
-			FullSourceLoc FullLocation = Context->getFullLoc(Declaration->getBeginLoc());
-			if (FullLocation.isValid())
-				llvm::outs() << "Found declaration at "
-				<< FullLocation.getSpellingLineNumber() << ":"
-				<< FullLocation.getSpellingColumnNumber() << "\n";
-		}
+		logs_line('.');
+		llvm::outs() << layout;
+		logs_line('.');
+		
 		return true;
 	}
+
+
 
 private:
 	ASTContext* Context;
@@ -373,10 +366,10 @@ public:
 
 //////////////////////////////////////////////////////////////////////////
 
-static llvm::cl::OptionCategory MyToolCategory("my-tool options");
+static llvm::cl::OptionCategory MyToolCategory("metatools options");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp("\nMore help text...\n");
-
+static cl::opt<mtstr> Opt_MTWorkDir("mt-work-dir", cl::desc("MetaTools Work Directory"), cl::value_desc("WorkDir"), cl::cat(MyToolCategory));
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -384,15 +377,19 @@ static cl::extrahelp MoreHelp("\nMore help text...\n");
 int main(int argc, const char** argv)
 {
 	CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
+	CmdLineOption.WorkDir = Opt_MTWorkDir;
+
+	logs_bar("MetaTools Begin");
+	logs() << "MetaTools<CmdLineOption.WorkDir> = " << CmdLineOption.WorkDir << "\n";
+	logs_line('-');
+	
+	
+	
+	
 	ClangTool Tool(OptionsParser.getCompilations(), OptionsParser.getSourcePathList());
 
-	return Tool.run(newFrontendActionFactory<FindNamedClassAction>().get());
+	bool bResult = Tool.run(newFrontendActionFactory<FindNamedClassAction>().get());
 
-	if (false)
-	{
-		if (argc > 1)
-		{
-			clang::tooling::runToolOnCode(std::make_unique<FindNamedClassAction>(), argv[1]);
-		}
-	}
+	logs_bar("MetaTools End");
+	return bResult;
 }
