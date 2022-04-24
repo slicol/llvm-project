@@ -116,7 +116,6 @@ public:
 		if (DesugaredType->isBuiltinType())
 		{
 			const BuiltinType* BT = DesugaredType->getAs<BuiltinType>();
-
 			int k = (int)BT->getKind();
 			mtstr name = (*MTBuiltinTypeTable)[k];
 			if (!name.empty())
@@ -263,6 +262,14 @@ public:
 		{
 			Result = mtstr("%struct.") + TypeName;
 		}
+
+		
+		Optional<CharUnits> TypeSize = Context->getTypeSizeInCharsIfKnown(Declaration->getTypeForDecl());
+		if (TypeSize.hasValue())
+		{
+			Result = Result + ":" + mtToString(TypeSize->getQuantity());
+		}
+		
 		
 		Result += " = \n{\n";
 
@@ -302,6 +309,13 @@ public:
 			mtstr fname = field->getNameAsString();
 			mtstr ftype = MTGetTypeName(DesugaredType, bHasUnkownType);
 			mtstr fielditem = fname + ":" + ftype;
+
+			if (field->isBitField())
+			{
+				int bitwidth = field->getBitWidthValue(*Context);
+				fielditem = fielditem + ":" + mtToString(bitwidth);
+			}
+
 
 			Result += "    " + fielditem + ",\n";
 		}
