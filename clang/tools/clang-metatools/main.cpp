@@ -337,11 +337,11 @@ public:
 		mtstr layout = MTGetTypeLayout(Declaration, bHasUnkownType);
 		if (bHasUnkownType)
 		{
-			MTAppendFile(CmdLineOption.WorkDir, "MetaTypeDesc.unkown.mtd", layout);
+			MTAppendFile(CmdLineOption.WorkDir, "MetaTypeDecl.unkown.mtd", layout);
 		}
 		else
 		{
-			MTAppendFile(CmdLineOption.WorkDir, "MetaTypeDesc.mtd", layout);
+			MTAppendFile(CmdLineOption.WorkDir, "MetaTypeDecl.mtd", layout);
 		}
 		logs_line('.');
 		llvm::outs() << layout;
