@@ -1,5 +1,20 @@
 #pragma once
 #include <string>
+#include <vector>
+#include <map>
+#include <unordered_map>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <cstring>
+#include <string>
+#include <map>
+#include <set>
+#include <vector>
+#include <queue>
+#include <memory>
+#include <functional>
+
 #include "llvm/Support/raw_ostream.h"
 
 #define mtMap  std::unordered_map
@@ -14,6 +29,7 @@
 #define mtToString(v) std::to_string(v)
 
 using namespace llvm;
+using namespace std;
 
 enum class MTLogLevel
 {
