@@ -174,6 +174,7 @@
 #include "llvm/Transforms/Vectorize/LoadStoreVectorizer.h"
 #include "llvm/Transforms/Vectorize/LoopVectorize.h"
 #include "llvm/Transforms/Vectorize/SLPVectorizer.h"
+#include "llvm/Transforms/Utils/MetaTools/MetaTools.h"
 
 using namespace llvm;
 
