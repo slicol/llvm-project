@@ -11,3 +11,6 @@ namespace llvm
 	};
 
 } // namespace llvm
+
+
+#define MT_LLVM_VER 12
