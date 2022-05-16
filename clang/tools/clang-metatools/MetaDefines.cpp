@@ -3,11 +3,12 @@
 #include <iosfwd>
 #include <iostream>
 #include <fstream>
-#include <filesystem>
+#include "llvm/Support/FileSystem.h"
+
 
 using namespace llvm;
 using namespace std;
-using namespace filesystem;
+using namespace llvm::sys;
 
 
 MTLogLevel MTEnableLogLevel = MTLogLevel::Verbose;
@@ -104,9 +105,10 @@ void MTStringSplit(const mtstr& s, const mtstr& delim, mtVector<mtstr>& output)
 
 bool MTSaveFile(const mtstr& dir, const mtstr& filename, const mtstr& data)
 {
-	if (!filesystem::exists(dir))
+	if (!fs::exists(dir))
 	{
-		filesystem::create_directory(dir);
+		errs() << "MTSaveFile() Create Dir: " << dir << "\n";
+		fs::create_directories(dir);
 	}
 
 	mtstr fullpath = dir + "/" + filename;
@@ -135,9 +137,9 @@ bool MTAppendFile(const mtstr& dir, const mtstr& filename, const mtstr& data)
 {
 	if (!dir.empty())
 	{
-		if (!filesystem::exists(dir))
+		if (!fs::exists(dir))
 		{
-			filesystem::create_directory(dir);
+			fs::create_directory(dir);
 		}
 	}
 	
