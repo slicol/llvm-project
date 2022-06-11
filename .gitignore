@@ -69,3 +69,5 @@ pythonenv*
 # automodapi puts generated documentation files here.
 /lldb/docs/python_api/
 /llvm/lib/Transforms/Utils/MetaTools
+llvm/CMakeFiles/cmake.check_cache
+llvm/CMakeCache.txt

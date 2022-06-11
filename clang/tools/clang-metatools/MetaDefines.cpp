@@ -133,6 +133,27 @@ bool MTSaveFile(const mtstr& dir, const mtstr& filename, const mtstr& data)
 	return true;
 }
 
+
+bool MTLoadFile(const mtstr& filepath, mtVector<mtstr>& outlines)
+{
+	logs() << "MTLoadFile() " << filepath << "\n";
+	if (!fs::exists(filepath))
+	{
+		errs() << "MTLoadFile() File Don't Exist! \n";
+		return false;
+	}
+
+
+	ifstream ifs(filepath.c_str());
+	mtstr s;
+	while (getline(ifs, s))
+	{
+		outlines.push_back(s);
+	}
+	return true;
+}
+
+
 bool MTAppendFile(const mtstr& dir, const mtstr& filename, const mtstr& data)
 {
 	if (!dir.empty())
@@ -221,4 +242,16 @@ void MTStringReplaceAll(mtstr& str, const mtstr& from, const mtstr& to)
 		str.replace(start_pos, from.length(), to);
 		start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
 	}
+}
+
+mtstr& MTStringTrimSpace(mtstr& s)
+{
+	if (s.empty())
+	{
+		return s;
+	}
+
+	s.erase(0, s.find_first_not_of(" \t\n\r\f\v"));
+	s.erase(s.find_last_not_of(" \t\n\r\f\v") + 1);
+	return s;
 }

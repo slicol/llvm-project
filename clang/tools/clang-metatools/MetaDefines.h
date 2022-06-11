@@ -55,6 +55,7 @@ void logs_line(char type = 0);
 
 mtstr& MTStringFormat(mtstr& buff, const char* fmt_str, ...);
 bool MTSaveFile(const mtstr& dir, const mtstr& filename, const mtstr& data);
+bool MTLoadFile(const mtstr& filepath, mtVector<mtstr>& outlines);
 bool MTAppendFile(const mtstr& dir, const mtstr& filename, const mtstr& data);
 void MTStringSplit(const mtstr& s, const mtstr& delim, mtVector<mtstr>& output);
 bool MTStringStartWith(const mtstr& s, const mtstr& t);
@@ -62,3 +63,5 @@ bool MTStringStartWith(const mtstr& s, const char* t);
 bool MTStringEndWith(const mtstr& s, const mtstr& t);
 bool MTStringEndWith(const mtstr& s, const char* t);
 void MTStringReplaceAll(mtstr& str, const mtstr& from, const mtstr& to);
+mtstr& MTStringTrimSpace(mtstr& s);
+

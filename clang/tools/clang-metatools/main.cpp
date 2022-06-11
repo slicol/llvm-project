@@ -388,9 +388,93 @@ static cl::opt<mtstr> Opt_MTWorkDir("mt-work-dir", cl::desc("MetaTools Work Dire
 //////////////////////////////////////////////////////////////////////////
 
 
+void MTParserResponeFile(mtVector<mtstr>& args,  const mtstr& filepath)
+{
+	mtVector<mtstr> outlines;
+	MTLoadFile(filepath, outlines);
+	for (mtstr line : outlines)
+	{
+		MTStringTrimSpace(line);
+		char flag = line[0];
+		if (flag == '-')
+		{
+			if (MTStringStartWith(line, "-mt-work-dir="))
+			{
+				args.push_back(line);
+			}
+			else if (MTStringStartWith(line, "-extra-arg="))
+			{
+				args.push_back(line);
+			}
+			
+		}
+		else if (flag == '/')
+		{
+			if (MTStringStartWith(line, "/I "))
+			{
+				args.push_back("-extra-arg=-I" + line.substr(3));
+			}
+		}
+		else if (flag == '@')
+		{
+			MTParserResponeFile(args, line.substr(1));
+		}
+		else if (flag == ';')
+		{
+			continue;
+		}
+		else
+		{
+			//src file
+			if (line[0] == '"')
+			{
+				args.push_back(line.substr(1,line.size()-2));
+			}
+			else
+			{
+				args.push_back(line);
+			}
+		}
+
+	}
+}
+
+
+
+
+
 int main(int argc, const char** argv)
 {
-	CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
+	mtVector<mtstr> args;
+	for (int i = 0; i < argc; ++i)
+	{
+		const char* arg = argv[i];
+		if (arg[0] == '@')
+		{
+			mtstr rspfile = &arg[1];
+			MTParserResponeFile(args, rspfile);
+		}
+		else if (arg[0] == ';')
+		{
+			continue;
+		}
+		else
+		{
+			args.push_back(arg);
+		}
+	}
+
+	int newargc = args.size();
+	const char** newargv = new const char* [newargc + 1];
+	for (int i = 0; i < newargc; ++i)
+	{
+		newargv[i] = args[i].c_str();
+	}
+	newargv[newargc] = nullptr;
+
+
+
+	CommonOptionsParser OptionsParser(newargc, newargv, MyToolCategory);
 	CmdLineOption.WorkDir = Opt_MTWorkDir;
 
 	logs_bar("MetaTools Begin");
