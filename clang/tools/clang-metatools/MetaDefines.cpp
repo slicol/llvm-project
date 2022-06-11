@@ -134,6 +134,37 @@ bool MTSaveFile(const mtstr& dir, const mtstr& filename, const mtstr& data)
 }
 
 
+bool MTSaveFile(const mtstr& filepath, const mtstr& data)
+{
+	mtstr dir = MTPathDirOf(filepath);
+	if (!fs::exists(dir))
+	{
+		errs() << "MTSaveFile() Create Dir: " << dir << "\n";
+		fs::create_directories(dir);
+	}
+
+	logs() << "MTSaveFile() " << filepath << "\n";
+
+	ofstream ofs;
+	ofs.open(filepath.c_str(), ios_base::binary | ios_base::out | ios_base::trunc);
+	if (!ofs.good())
+	{
+		logs() << "MTSaveFile() \t file open failed!\n";
+		return false;
+	}
+
+	ofs.write(data.c_str(), data.size());
+	if (ofs.bad())
+	{
+		logs() << "MTSaveFile() \t file write failed, inner error !\n";
+		return false;
+	}
+
+	ofs.close();
+	return true;
+
+}
+
 bool MTLoadFile(const mtstr& filepath, mtVector<mtstr>& outlines)
 {
 	logs() << "MTLoadFile() " << filepath << "\n";
@@ -254,4 +285,10 @@ mtstr& MTStringTrimSpace(mtstr& s)
 	s.erase(0, s.find_first_not_of(" \t\n\r\f\v"));
 	s.erase(s.find_last_not_of(" \t\n\r\f\v") + 1);
 	return s;
+}
+
+mtstr MTPathDirOf(const mtstr& path)
+{
+	size_t pos = path.find_last_of("\\/");
+	return (std::string::npos == pos) ? "" : path.substr(0, pos);
 }

@@ -19,6 +19,16 @@ using namespace llvm;
 using namespace clang;
 
 
+
+class MTMetaParserContext
+{
+public:
+	mtstr NormalDecl;
+	mtstr UnkownDecl;
+};
+
+MTMetaParserContext GMTContext;
+
 static std::vector<mtstr>* MTBuiltinTypeTable;
 static void MTCheckBuiltinTypeTable()
 {
@@ -67,10 +77,12 @@ static bool MTHasVirtualTable(const clang::Type* Ty)
 		if (method->isVirtual()) return true;
 	}
 
+	/*
 	for (CXXBaseSpecifier& base : Decl->bases())
 	{
 		if (MTHasVirtualTable(base.getType().getTypePtr())) return true;
 	}
+	*/
 
 	return false;
 }
@@ -334,14 +346,23 @@ public:
 
 		bool bHasUnkownType = false;
 		logs_line('-');
-		mtstr layout = MTGetTypeLayout(Declaration, bHasUnkownType);
+		mtstr layout = "";
+
+		try
+		{
+			layout = MTGetTypeLayout(Declaration, bHasUnkownType);
+		}
+		catch (...)
+		{
+		}
+		
 		if (bHasUnkownType)
 		{
-			MTAppendFile(CmdLineOption.WorkDir, "MetaTypeDecl.unkown.mtd", layout);
+			GMTContext.UnkownDecl = GMTContext.UnkownDecl + layout;
 		}
 		else
 		{
-			MTAppendFile(CmdLineOption.WorkDir, "MetaTypeDecl.mtd", layout);
+			GMTContext.NormalDecl = GMTContext.NormalDecl + layout;
 		}
 		logs_line('.');
 		llvm::outs() << layout;
@@ -380,89 +401,162 @@ public:
 
 //////////////////////////////////////////////////////////////////////////
 
-static llvm::cl::OptionCategory MyToolCategory("metatools options");
+static llvm::cl::OptionCategory MyToolCategory("MetaParser options");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp("\nMore help text...\n");
-static cl::opt<mtstr> Opt_MTWorkDir("mt-work-dir", cl::desc("MetaTools Work Directory"), cl::value_desc("WorkDir"), cl::cat(MyToolCategory));
+static cl::opt<mtstr> Opt_MTOutFile("o", cl::desc("MetaParser Output "), cl::value_desc("OutputFilePath"), cl::cat(MyToolCategory));
 
 //////////////////////////////////////////////////////////////////////////
 
-
-void MTParserResponeFile(mtVector<mtstr>& args,  const mtstr& filepath)
+void MTParserArgLine(mtVector<mtstr>& args, mtVector<mtstr>& srcfiles, mtVector<mtstr>& incfiles, mtVector<mtstr>& defines, mtstr& outfile, mtstr line);
+void MTParserResponeFile(mtVector<mtstr>& args, mtVector<mtstr>& srcfiles, mtVector<mtstr>& incfiles, mtVector<mtstr>& defines, mtstr& outfile, const mtstr& filepath)
 {
 	mtVector<mtstr> outlines;
 	MTLoadFile(filepath, outlines);
 	for (mtstr line : outlines)
 	{
-		MTStringTrimSpace(line);
-		char flag = line[0];
-		if (flag == '-')
-		{
-			if (MTStringStartWith(line, "-mt-work-dir="))
-			{
-				args.push_back(line);
-			}
-			else if (MTStringStartWith(line, "-extra-arg="))
-			{
-				args.push_back(line);
-			}
-			
-		}
-		else if (flag == '/')
-		{
-			if (MTStringStartWith(line, "/I "))
-			{
-				args.push_back("-extra-arg=-I" + line.substr(3));
-			}
-		}
-		else if (flag == '@')
-		{
-			MTParserResponeFile(args, line.substr(1));
-		}
-		else if (flag == ';')
-		{
-			continue;
-		}
-		else
-		{
-			//src file
-			if (line[0] == '"')
-			{
-				args.push_back(line.substr(1,line.size()-2));
-			}
-			else
-			{
-				args.push_back(line);
-			}
-		}
-
+		MTParserArgLine(args, srcfiles, incfiles, defines, outfile, line);
 	}
+}
+
+
+void MTParserArgLine(mtVector<mtstr>& args, mtVector<mtstr>& srcfiles, mtVector<mtstr>& incfiles, mtVector<mtstr>& defines,  mtstr& outfile, mtstr line)
+{
+	MTStringTrimSpace(line);
+	char flag = line[0];
+	if (flag == '-')
+	{
+		if (MTStringStartWith(line, "-o="))
+		{
+			outfile = line.substr(3);
+			args.push_back(line);
+		}
+		else if (MTStringStartWith(line, "-extra-arg="))
+		{
+			args.push_back(line);
+		}
+		else if (MTStringStartWith(line, "-D"))
+		{
+			mtVector<mtstr> items;
+			MTStringSplit(line, " ", items);
+			for (mtstr item : items)
+			{
+				MTStringTrimSpace(item);
+				if (MTStringStartWith(item, "-D"))
+				{
+					defines.push_back(item.substr(2));
+				}
+			}
+		}
+	}
+	else if (flag == '/')
+	{
+		if (MTStringStartWith(line, "/I "))
+		{
+			args.push_back("-extra-arg=-I" + line.substr(3));
+		}
+		else if (MTStringStartWith(line, "/FI"))
+		{
+			mtstr inc = line.substr(3);
+
+			if (inc[0] == '"')
+			{
+				inc = inc.substr(1, inc.size() - 2);
+			}
+
+			incfiles.push_back(inc);
+		}
+		else if (MTStringStartWith(line, "/D"))
+		{
+			defines.push_back(line.substr(2));
+		}
+	}
+	else if (flag == '@')
+	{
+		mtstr rspfile = line.substr(1);
+		MTParserResponeFile(args, srcfiles, incfiles, defines, outfile, rspfile);
+	}
+	else if (flag == ';')
+	{
+		return;
+	}
+	else
+	{
+		//src file
+		mtstr src = line;
+		if (line[0] == '"')
+		{
+			src = line.substr(1, line.size() - 2);
+		}
+		srcfiles.push_back(src);
+	}
+
 }
 
 
 
 
 
+mtstr MTGetUnkownOutFilePath(mtstr outfile)
+{
+	int pos = (int)outfile.find_last_of('.');
+	if (pos >= 0)
+	{
+		return outfile.substr(0, pos) + ".Unkown" + outfile.substr(pos);
+	}
+	return outfile + ".Unkown.mtd";
+}
+
+mtstr MTGetMTDSrcFilePath(mtstr outfile)
+{
+	int pos = (int)outfile.find_last_of('.');
+	if (pos >= 0)
+	{
+		return outfile.substr(0, pos) + ".mtd.cpp";
+	}
+	return outfile + ".mtd.cpp";
+}
+
+
+void MTCreateMTDSrcFile(const mtstr& outfile, const mtVector<mtstr>& srcfiles, const mtVector<mtstr>& incfiles)
+{
+	mtstr lines = "";
+	for (const mtstr& inc:incfiles)
+	{
+		lines = lines + "#include \"" + inc + "\"\n";
+	}
+
+	for (const mtstr& src : srcfiles)
+	{
+		lines = lines + "#include \"" + src + "\"\n";
+	}
+
+	MTSaveFile(outfile, lines);
+}
+
+
 int main(int argc, const char** argv)
 {
 	mtVector<mtstr> args;
-	for (int i = 0; i < argc; ++i)
+	mtVector<mtstr> srcfiles;
+	mtVector<mtstr> incfiles;
+	mtVector<mtstr> defines;
+	mtstr outfile;
+
+	args.push_back(argv[0]);
+
+	for (int i = 1; i < argc; ++i)
 	{
 		const char* arg = argv[i];
-		if (arg[0] == '@')
-		{
-			mtstr rspfile = &arg[1];
-			MTParserResponeFile(args, rspfile);
-		}
-		else if (arg[0] == ';')
-		{
-			continue;
-		}
-		else
-		{
-			args.push_back(arg);
-		}
+		mtstr line = arg;
+		MTParserArgLine(args, srcfiles, incfiles, defines, outfile, line);
 	}
+
+
+	mtstr mtdsrc = MTGetMTDSrcFilePath(outfile);
+	MTCreateMTDSrcFile(mtdsrc, srcfiles, incfiles);
+	args.push_back(mtdsrc);
+
 
 	int newargc = args.size();
 	const char** newargv = new const char* [newargc + 1];
@@ -473,21 +567,26 @@ int main(int argc, const char** argv)
 	newargv[newargc] = nullptr;
 
 
-
 	CommonOptionsParser OptionsParser(newargc, newargv, MyToolCategory);
-	CmdLineOption.WorkDir = Opt_MTWorkDir;
+	CmdLineOption.OutFileNormal = Opt_MTOutFile;
+	CmdLineOption.OutFileUnkown = MTGetUnkownOutFilePath(Opt_MTOutFile);
+	
 
-	logs_bar("MetaTools Begin");
-	logs() << "MetaTools<CmdLineOption.WorkDir> = " << CmdLineOption.WorkDir << "\n";
+	logs_bar("MetaParser Begin");
+	logs() << "MetaParser<CmdLineOption.OutFileNormal> = " << CmdLineOption.OutFileNormal << "\n";
+	logs() << "MetaParser<CmdLineOption.OutFileUnkown> = " << CmdLineOption.OutFileUnkown << "\n";
+	logs() << "MetaParser<mtdsrc> = " << mtdsrc << "\n";
 	logs_line('-');
-	
-	
 	
 	
 	ClangTool Tool(OptionsParser.getCompilations(), OptionsParser.getSourcePathList());
 
 	bool bResult = Tool.run(newFrontendActionFactory<FindNamedClassAction>().get());
 
-	logs_bar("MetaTools End");
+
+	MTSaveFile(CmdLineOption.OutFileNormal, GMTContext.NormalDecl);
+	MTSaveFile(CmdLineOption.OutFileUnkown, GMTContext.UnkownDecl);
+
+	logs_bar("MetaParser End");
 	return bResult;
 }
