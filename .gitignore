@@ -71,3 +71,4 @@ pythonenv*
 /llvm/lib/Transforms/Utils/MetaTools
 llvm/CMakeFiles/cmake.check_cache
 llvm/CMakeCache.txt
+clang/tools/clang-metaparser/MetaParser
