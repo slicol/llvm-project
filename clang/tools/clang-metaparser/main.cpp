@@ -66,6 +66,8 @@ int main(int argc, const char** argv)
 	CmdLineOption.LogFilePath = MTGetLogFilePath(Opt_MTOutFile);
 	CmdLineOption.bLogToFile = Opt_MTLogToFile;
 	MTMakeSureDirExist(Opt_MTOutFile);
+	MTMakeSureDirExist(CmdLineOption.LogFilePath);
+	
 	
 	std::error_code EC;
 	MTLogFileStream = new raw_fd_ostream(CmdLineOption.LogFilePath, EC);
