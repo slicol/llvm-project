@@ -84,8 +84,23 @@ int main(int argc, const char** argv)
 	bool bResult = Tool.run(newFrontendActionFactory<FindNamedClassAction>().get());
 
 
-	MTSaveFile(CmdLineOption.OutFileNormal, GMTContext.NormalDecl);
-	MTSaveFile(CmdLineOption.OutFileUnkown, GMTContext.UnkownDecl);
+	mtstr NormalDecl;
+	mtstr UnkownDecl;
+	for (MTMetaType* MetaType : GMTContext.TypeTable)
+	{
+		if (MetaType->bUnkownType)
+		{
+			UnkownDecl = UnkownDecl + MTExportMetaType(*MetaType);
+		}
+		else
+		{
+			NormalDecl = NormalDecl + MTExportMetaType(*MetaType);
+		}
+	}
+	
+
+	MTSaveFile(CmdLineOption.OutFileNormal, NormalDecl);
+	MTSaveFile(CmdLineOption.OutFileUnkown, UnkownDecl);
 
 	logs_bar("MetaParser End");
 	return bResult;
