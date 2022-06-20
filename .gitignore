@@ -54,5 +54,6 @@ autoconf/autom4te.cache
 .vs
 # clangd index
 .clangd
+/llvm/lib/Transforms/Utils/MetaTools
 clang/tools/clang-metaparser/MetaParser
 CMakeBuild
