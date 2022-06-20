@@ -69,3 +69,5 @@ pythonenv*
 # automodapi puts generated documentation files here.
 /lldb/docs/python_api/
 /llvm/lib/Transforms/Utils/MetaTools
+clang/tools/clang-metaparser/MetaParser
+CMakeBuild
